@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI视频生成</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <style>
+        .tab-active {
+            border-bottom: 2px solid #4F46E5;
+            color: #4F46E5;
+        }
+        .rotating-circle {
+            animation: rotate 1s linear infinite;
+        }
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .input-style {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 10px;
+            width: 100%;
+        }
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #F59E0B;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .upload-loading {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            border: 3px solid #4F46E5;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s linear infinite;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <!-- Header with history button -->
+            <div class="flex justify-between items-center mb-6">
+                <h1 class="text-2xl font-bold">AI视频生成</h1>
+                <button id="show-history" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg">
+                    历史记录
+                </button>
+            </div>
+
+            <!-- Tabs -->
+            <div class="flex mb-6 border-b">
+                <button class="px-4 py-2 tab-active" id="text-to-video-tab">文生视频</button>
+                <button class="px-4 py-2" id="image-to-video-tab">图生视频</button>
+            </div>
+
+            <!-- Text to Video Form -->
+            <div id="text-to-video-form">
+                <textarea class="input-style mb-4" id="text-prompt" placeholder="请输入生成的内容" rows="4"></textarea>
+                <div class="mb-4">
+                    <label class="flex items-center">
+                        <input type="checkbox" id="text-audio-toggle" class="form-checkbox h-5 w-5 text-indigo-600">
+                        <span class="ml-2">生成视频声音</span>
+                    </label>
+                </div>
+                <input type="email" id="text-email" class="input-style mb-4" placeholder="请输入邮箱（可选，用于接收通知）">
+            </div>
+
+            <!-- Image to Video Form -->
+            <div id="image-to-video-form" class="hidden">
+                <div class="mb-4 border-2 border-dashed border-gray-300 rounded-lg p-6 text-center relative" id="upload-area">
+                    <div id="upload-placeholder">
+                        <p>点击或拖拽上传图片</p>
+                        <p class="text-sm text-gray-500">大小不超过5M</p>
+                    </div>
+                    <div id="upload-loading" class="hidden">
+                        <div class="upload-loading"></div>
+                        <p class="mt-2">上传中...</p>
+                    </div>
+                    <img id="preview-image" class="hidden mx-auto max-h-64">
+                    <input type="file" id="file-input" class="hidden" accept="image/*">
+                </div>
+                <textarea class="input-style mb-4" id="image-prompt" placeholder="让图片动起来">让图片动起来</textarea>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block mb-2">分辨率</label>
+                        <select id="resolution" class="input-style">
+                            <option value="720x480">720x480</option>
+                            <option value="1024x1024">1024x1024</option>
+                            <option value="1280x960" selected>1280x960</option>
+                            <option value="960x1280">960x1280</option>
+                            <option value="1920x1080">1920x1080</option>
+                            <option value="1080x1920">1080x1920</option>
+                            <option value="2048x1080">2048x1080</option>
+                            <option value="3840x2160">3840x2160</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block mb-2">视频时长</label>
+                        <select id="duration" class="input-style">
+                            <option value="5">5秒</option>
+                            <option value="10">10秒</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block mb-2">视频帧率</label>
+                        <select id="fps" class="input-style">
+                            <option value="30">30fps</option>
+                            <option value="60">60fps</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="flex items-center mt-6">
+                            <input type="checkbox" id="image-audio-toggle" class="form-checkbox h-5 w-5 text-indigo-600">
+                            <span class="ml-2">生成视频声音</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <button id="generate-btn" class="bg-indigo-600 text-white px-6 py-2 rounded-lg w-full hover:bg-indigo-700 mb-4">
+                生成视频
+            </button>
+
+            <!-- History List (Now below the generate button) -->
+            <div id="local-history" class="mt-4 hidden">
+                <h2 class="text-xl font-bold mb-4">历史记录</h2>
+                <div id="local-history-list"></div>
+            </div>
+        </div>
+
+        <!-- History Dialog -->
+        <div id="history-dialog" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+            <div class="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto relative" onclick="event.stopPropagation()">
+                <button class="absolute top-4 right-4 text-gray-500 hover:text-gray-700" id="close-history">
+                    ×
+                </button>
+                <h2 class="text-xl font-bold mb-4">历史记录</h2>
+                <div id="history-list">
+                    <!-- History items will be inserted here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Video Player Dialog -->
+        <div id="video-player-dialog" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+            <div class="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 relative" onclick="event.stopPropagation()">
+                <!-- 修改返回按钮，让整个圆形区域可点击 -->
+                <div class="absolute top-4 left-4 bg-purple-600 hover:bg-purple-700 rounded-full cursor-pointer" id="back-to-history">
+                    <span class="inline-block text-white font-bold py-2 px-4">返回</span>
+                </div>
+                <video id="video-player" controls class="w-full" poster="">
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+        </div>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    let currentImageUrl = null;
+    let isUploading = false;
+    let tasks = [];
+
+    const historyList = document.getElementById('history-list');
+
+    // Load tasks from localStorage
+    function loadTasks() {
+        const savedTasks = localStorage.getItem('videoGeneratorTasks');
+        if (savedTasks) {
+            tasks = JSON.parse(savedTasks);
+            updateHistoryView();
+        }
+    }
+
+    // Save tasks to localStorage
+    function saveTasks() {
+        localStorage.setItem('videoGeneratorTasks', JSON.stringify(tasks));
+    }
+
+    // Initialize by loading saved tasks
+    loadTasks();
+
+    // Tab switching
+    const textTab = document.getElementById('text-to-video-tab');
+    const imageTab = document.getElementById('image-to-video-tab');
+    const textForm = document.getElementById('text-to-video-form');
+    const imageForm = document.getElementById('image-to-video-form');
+
+    textTab.addEventListener('click', () => {
+        textTab.classList.add('tab-active');
+        imageTab.classList.remove('tab-active');
+        textForm.classList.remove('hidden');
+        imageForm.classList.add('hidden');
+    });
+
+    imageTab.addEventListener('click', () => {
+        imageTab.classList.add('tab-active');
+        textTab.classList.remove('tab-active');
+        imageForm.classList.remove('hidden');
+        textForm.classList.add('hidden');
+    });
+
+    // Show history button
+    document.getElementById('show-history').addEventListener('click', () => {
+        document.getElementById('history-dialog').classList.remove('hidden');
+        updateTaskStatuses();
+    });
+
+    // File upload handling
+    const uploadArea = document.getElementById('upload-area');
+    const fileInput = document.getElementById('file-input');
+    const previewImage = document.getElementById('preview-image');
+    const uploadPlaceholder = document.getElementById('upload-placeholder');
+
+    uploadArea.addEventListener('click', () => fileInput.click());
+    uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadArea.classList.add('border-indigo-600');
+    });
+    uploadArea.addEventListener('dragleave', () => {
+        uploadArea.classList.remove('border-indigo-600');
+    });
+    uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove('border-indigo-600');
+        handleFile(e.dataTransfer.files[0]);
+    });
+
+    fileInput.addEventListener('change', (e) => {
+        handleFile(e.target.files[0]);
+    });
+
+    function handleFile(file) {
+        if (!file) return;
+        if (file.size > 5 * 1024 * 1024) {
+            alert('文件大小不能超过5M');
+            return;
+        }
+
+        const uploadLoading = document.getElementById('upload-loading');
+        const uploadPlaceholder = document.getElementById('upload-placeholder');
+        const previewImage = document.getElementById('preview-image');
+
+        uploadLoading.classList.remove('hidden');
+        uploadPlaceholder.classList.add('hidden');
+        previewImage.classList.add('hidden');
+        isUploading = true;
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        fetch('https://pic.foxhank.top/upload', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            isUploading = false;
+            const firstItem = data[0];
+            if (firstItem && firstItem.src) {
+                isUploading = false;
+                uploadLoading.classList.add('hidden');
+                currentImageUrl = `https://pic.foxhank.top${firstItem.src}`;
+                previewImage.src = currentImageUrl;
+                previewImage.classList.remove('hidden');
+            } else {
+                console.error('Invalid server response:', data);
+            }
+        })
+        .catch(error => {
+            isUploading = false;
+            uploadLoading.classList.add('hidden');
+            uploadPlaceholder.classList.remove('hidden');
+            alert('上传失败，请重试');
+            console.error('Error:', error);
+        });
+    }
+
+    // Generate button click handler
+    document.getElementById('generate-btn').addEventListener('click', () => {
+        const isImageMode = !imageForm.classList.contains('hidden');
+        const data = {
+            prompt: isImageMode ?
+                document.getElementById('image-prompt').value :
+                document.getElementById('text-prompt').value,
+            with_audio: isImageMode ?
+                document.getElementById('image-audio-toggle').checked :
+                document.getElementById('text-audio-toggle').checked,
+            email: document.getElementById('text-email').value
+
+        };
+        const prompt = isImageMode ?
+            document.getElementById('image-prompt').value :
+            document.getElementById('text-prompt').value;
+
+        if (isImageMode) {
+            if (!currentImageUrl) {
+                alert('请先上传图片');
+                return;
+            }
+            if (isUploading) {
+                alert('请等待图片上传完成');
+                return;
+            }
+            data.image_url = currentImageUrl;
+            data.size = document.getElementById('resolution').value;
+            data.duration = parseInt(document.getElementById('duration').value);
+            data.fps = parseInt(document.getElementById('fps').value);
+        }
+
+        fetch('https://aivideo.foxhank.cn/generate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                addTask(data.id, prompt);
+                alert('提交成功！请在历史记录中查看进度');
+            } else {
+                alert('生成失败，请重试');
+            }
+        })
+        .catch(error => {
+            alert('提交失败，请重试');
+            console.error('Error:', error);
+        });
+    });
+
+    // History management
+    const historyDialog = document.getElementById('history-dialog');
+    const videoDialog = document.getElementById('video-player-dialog');
+
+    historyDialog.addEventListener('click', (e) => {
+        if (e.target === historyDialog) {
+            historyDialog.classList.add('hidden');
+        }
+    });
+
+    videoDialog.addEventListener('click', (e) => {
+        if (e.target === videoDialog) {
+            videoDialog.classList.add('hidden');
+        }
+    });
+    function updateTaskStatuses() {
+        tasks.forEach(task => {
+            if (task.status === 'processing') {
+                checkTaskStatus(task.id);
+            }
+        });
+    }
+
+    function addTask(taskId, prompt) {
+        tasks.push({
+            id: taskId,
+            prompt: prompt,
+            status: 'processing',
+            timestamp: Date.now() // Add timestamp for sorting
+        });
+        saveTasks(); // Save after adding new task
+        updateHistoryView();
+    }
+
+    function updateHistoryView() {
+        // Sort tasks by timestamp, newest first
+        const sortedTasks = [...tasks].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+        historyList.innerHTML = sortedTasks.map((task, index) => `
+            <div class="border-b p-4 flex items-center justify-between">
+                <div>
+                    <span class="font-bold">#${index + 1}</span>
+                    <span class="ml-4">${task.prompt || '无提示词'}</span>
+                </div>
+                <div class="flex items-center">
+                    ${getStatusHTML(task)}
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function getStatusHTML(task) {
+        switch(task.status) {
+            case 'processing':
+                return `<div class="flex items-center text-yellow-500">
+                            <div class="loading"></div>
+                            <span>处理中</span>
+                       </div>`;
+            case 'success':
+                return `<div class="flex items-center">
+                            <span class="text-green-600 mr-4">生成成功</span>
+                            <button class="px-4 py-1 bg-indigo-600 text-white rounded"
+                                    onclick="playVideo('${task.url}', '${task.coverUrl}')">
+                                播放
+                            </button>
+                       </div>`;
+            case 'failed':
+                return `<span class="text-red-600">生成失败</span>`;
+            default:
+                return `<span class="text-gray-500">未知状态</span>`;
+        }
+    }
+
+    function checkTaskStatus(taskId) {
+        fetch(`https://aivideo.foxhank.cn/check/${taskId}`)
+            .then(response => response.json())
+            .then(data => {
+                const task = tasks.find(t => t.id === taskId);
+                if (task && task.status === 'processing') {
+                    if (data.status === 'success') {
+                        task.status = 'success';
+                        task.url = data.url;
+                        task.coverUrl = data.cover_image_url;
+                    } else if (data.status === 'failed') {
+                        task.status = 'failed';
+                    }
+                    saveTasks(); // Save after updating task status
+                    updateHistoryView();
+                }
+            })
+            .catch(error => {
+                console.error('Error checking task status:', error);
+            });
+    }
+
+    // Video player
+    window.playVideo = function(url, coverUrl) {
+        const videoPlayer = document.getElementById('video-player');
+        videoPlayer.src = url;
+        videoPlayer.poster = coverUrl;
+        historyDialog.classList.add('hidden');
+        videoDialog.classList.remove('hidden');
+    };
+
+    // Add clear history button and functionality
+    const clearHistoryBtn = document.createElement('button');
+    clearHistoryBtn.textContent = '清空历史记录';
+    clearHistoryBtn.className = 'px-4 py-2 bg-red-600 text-white rounded absolute top-4 right-4';
+    clearHistoryBtn.addEventListener('click', () => {
+        if (confirm('确定要清空所有历史记录吗？此操作不可撤销。')) {
+            tasks = [];
+            localStorage.removeItem('videoGeneratorTasks');
+            updateHistoryView();
+        }
+    });
+    historyDialog.querySelector('.relative').appendChild(clearHistoryBtn);
+
+    // Event listeners for dialogs
+    document.getElementById('close-history').addEventListener('click', () => {
+        historyDialog.classList.add('hidden');
+    });
+
+    document.getElementById('back-to-history').addEventListener('click', () => {
+        videoDialog.classList.add('hidden');
+        historyDialog.classList.remove('hidden');
+    });
+
+    // Auto-check status
+    setInterval(() => {
+        if (historyDialog.classList.contains('hidden')) return;
+        updateTaskStatuses();
+    }, 5000);
+});
+</script>
+</body>
+</html>
